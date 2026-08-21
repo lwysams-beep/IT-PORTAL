@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>香海正覺蓮社佛教正覺蓮社學校 - 權限管理雲端平台 V1.19</title>
+    <title>香海正覺蓮社佛教正覺蓮社學校 - 教師專屬行政平台 V1.20</title>
     
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
@@ -49,7 +49,6 @@
         .app-icon { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.3s; }
         .restricted:hover { box-shadow: 0 10px 20px rgba(231, 76, 60, 0.15); }
 
-        /* 後台管理按鈕 (預設隱藏 display: none) */
         .admin-btn { 
             display: none; 
             position: fixed; bottom: 30px; right: 30px; background: #2ecc71; color: #fff; border: none; padding: 15px 25px; border-radius: 30px; font-size: 16px; font-weight: bold; cursor: pointer; z-index: 100; transition: all 0.2s; box-shadow: 0 4px 10px rgba(0,0,0,0.1); 
@@ -78,6 +77,43 @@
         .manage-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; border: 2px solid #ecf0f1; background: #fdfefe; border-radius: 15px; margin-bottom: 10px; }
         .manage-item-info { font-size: 15px; font-weight: bold; color: #2c3e50; }
         .manage-actions { display: flex; gap: 8px; }
+
+        /* =========================================
+           ⭐️ 手機版專屬排版優化 (@media query)
+           ========================================= */
+        @media (max-width: 768px) {
+            /* 1. 縮小頂部橫幅，節省螢幕空間 */
+            .banner-header { 
+                padding: 12px 15px; 
+                flex-direction: row; /* 保持橫向排列 */
+                align-items: center; 
+                border-bottom: 3px solid #e74c3c; 
+            }
+            .header-content { gap: 10px; }
+            .header-content h1 { font-size: 18px; text-shadow: 1px 1px 0px #ecf0f1; } /* 縮小字體 */
+            .title-logo { width: 35px; } /* 縮小校徽 */
+            
+            /* 縮小使用者資訊列 */
+            .user-info { 
+                padding: 4px 10px; 
+                font-size: 11px; 
+                flex-direction: column; /* 讓名字與登出按鈕上下排列省空間 */
+                gap: 5px; 
+            }
+            #user-name-display { font-size: 10px; }
+            .logout-btn { padding: 4px 10px; font-size: 10px; }
+
+            /* 2. 方格強制改為一行 3 個 */
+            .grid-container { 
+                grid-template-columns: repeat(3, 1fr); /* ⭐️ 強制 3 欄 */
+                padding: 15px; 
+                gap: 12px; /* 縮小方格間的間隙 */
+            }
+            .app-card { border-radius: 15px; } /* 在手機上稍微縮小圓角讓比例更好看 */
+            
+            /* 縮小管理按鈕 */
+            .admin-btn { padding: 10px 15px; font-size: 14px; bottom: 20px; right: 20px; }
+        }
     </style>
 </head>
 <body>
@@ -89,7 +125,7 @@
         <p style="color: #7f8c8d; font-size: 14px;">一站式教師行政平台</p>
         <button class="google-btn" onclick="loginWithGoogle()">
             <img src="https://cdn-icons-png.flaticon.com/512/2991/2991148.png" alt="Google"> 
-            使用 Google 帳號登入
+            使用學校帳號登入
         </button>
     </div>
 </div>
@@ -108,10 +144,10 @@
     
     <div class="grid-container" id="app-grid"></div>
     
-    <!-- 加上 id 以便用 JavaScript 控制顯示與隱藏 -->
     <button id="admin-btn" class="admin-btn" onclick="openAdmin()">🍄 進入後台管理</button>
 </div>
 
+<!-- 後台 Modal (同上，省略以節省空間，請見完整代碼) -->
 <div id="adminModal" class="modal">
     <div class="modal-content">
         <div class="tabs">
@@ -152,7 +188,10 @@
 </div>
 
 <script>
-    // ⭐️ 在這裡設定授權的管理員 Email 名單
+    // ⭐️ 1. 限定只有這個網域的 Email 可以進入平台
+    const ALLOWED_DOMAIN = '@bcklas.edu.hk';
+
+    // ⭐️ 2. 指定只有這兩位可以看見「後台按鈕」並進行管理
     const ADMIN_EMAILS = [
         'lwysams@bcklas.edu.hk',
         'slssams@bcklas.edu.hk'
@@ -171,17 +210,34 @@
     const db = firebase.firestore();
     const auth = firebase.auth();
     const googleProvider = new firebase.auth.GoogleAuthProvider();
+    
+    // 提示 Google 登入視窗預設只接受此網域
+    googleProvider.setCustomParameters({ hd: "bcklas.edu.hk" });
 
     let appsData = [];
     let dbUnsubscribe = null;
 
+    // ==========================================
+    // ⭐️ 登入狀態監聽與 Email 網域驗證
+    // ==========================================
     auth.onAuthStateChanged((user) => {
         if (user) {
+            // 【安全防護】檢查登入者的 Email 結尾是否為學校網域
+            if (!user.email.endsWith(ALLOWED_DOMAIN)) {
+                alert('⛔ 存取被拒絕！\n\n此平台僅限「香海正覺蓮社佛教正覺蓮社學校」教職員使用。\n請使用結尾為 @bcklas.edu.hk 的 Google 帳號登入。');
+                auth.signOut(); // 強制踢出
+                return;
+            }
+
+            // 通過驗證，顯示主畫面
             document.getElementById('login-screen').style.display = 'none';
             document.getElementById('main-content').style.display = 'flex';
-            document.getElementById('user-name-display').innerText = `🌟 歡迎, ${user.displayName}`;
             
-            // ⭐️ 檢查 Email 是否在管理員名單中，是的話才顯示後台按鈕
+            // 抓取真實姓名的第一個字 (例如：林小明 -> 林) 以節省手機空間
+            let shortName = user.displayName ? user.displayName.split(' ')[0] : '老師';
+            document.getElementById('user-name-display').innerText = `🌟 ${shortName}`;
+            
+            // 檢查是否為管理員
             if (ADMIN_EMAILS.includes(user.email)) {
                 document.getElementById('admin-btn').style.display = 'block';
             } else {
@@ -192,7 +248,7 @@
         } else {
             document.getElementById('login-screen').style.display = 'flex';
             document.getElementById('main-content').style.display = 'none';
-            document.getElementById('admin-btn').style.display = 'none'; // 登出時隱藏按鈕
+            document.getElementById('admin-btn').style.display = 'none'; 
             if (dbUnsubscribe) dbUnsubscribe(); 
         }
     });
@@ -217,7 +273,6 @@
                 appsData = doc.data().list;
             } else {
                 appsData = JSON.parse(JSON.stringify(defaultApps));
-                // 如果是管理員才執行初始寫入，避免一般老師讀不到報錯
                 if (auth.currentUser && ADMIN_EMAILS.includes(auth.currentUser.email)) {
                     saveData(); 
                 }
@@ -250,7 +305,6 @@
             
             card.onclick = () => {
                 if (app.restricted) {
-                    // ⭐️ 這裡設定鎖定方塊的進入密碼！目前設定為 '123456'
                     let password = prompt('🔥 此為機密區域，請輸入通關密碼：');
                     if (password === '123456') { 
                         if (app.url !== '#') window.open(app.url, '_blank');
@@ -322,7 +376,6 @@
     }
 
     window.openAdmin = function() { 
-        // 雙重檢查：如果不是管理員呼叫此函數，則阻擋
         if (auth.currentUser && !ADMIN_EMAILS.includes(auth.currentUser.email)) {
             alert("您沒有後台管理權限！");
             return;
