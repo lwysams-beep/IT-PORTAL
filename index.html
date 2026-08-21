@@ -333,4 +333,68 @@
     }
 
     window.deleteApp = function(index) {
-        if
+        if(confirm('確定要把「' + appsData[index].name + '」方塊敲碎 (刪除) 嗎？')) {
+            appsData.splice(index, 1);
+            saveData();
+        }
+    }
+
+    window.editApp = function(index) {
+        const app = appsData[index];
+        document.getElementById('editIndex').value = index;
+        document.getElementById('appNameInput').value = app.name;
+        document.getElementById('appImgInput').value = app.img;
+        document.getElementById('appLinkInput').value = app.url;
+        document.getElementById('appRestrictedInput').checked = app.restricted;
+        switchTab('add');
+    }
+
+    window.saveApp = function() {
+        const index = parseInt(document.getElementById('editIndex').value);
+        const name = document.getElementById('appNameInput').value;
+        let img = document.getElementById('appImgInput').value || 'https://cdn-icons-png.flaticon.com/512/1006/1006490.png'; 
+        const link = document.getElementById('appLinkInput').value || '#'; 
+        const restricted = document.getElementById('appRestrictedInput').checked;
+
+        if (name.trim() === '') return alert('請輸入方塊名稱！');
+
+        img = convertDriveLink(img);
+
+        const newData = { name, img, url: link, restricted };
+        if (index === -1) appsData.push(newData);
+        else appsData[index] = newData;
+        
+        saveData();
+        switchTab('manage');
+    }
+
+    window.openAdmin = function() { 
+        const modal = document.getElementById('adminModal');
+        if (modal) { switchTab('manage'); modal.style.display = 'block'; }
+    }
+    
+    window.closeAdmin = function() { 
+        document.getElementById('adminModal').style.display = 'none'; 
+    }
+    
+    window.switchTab = function(tab) {
+        document.getElementById('tab-manage').className = tab === 'manage' ? 'tab active' : 'tab';
+        document.getElementById('tab-add').className = tab === 'add' ? 'tab active' : 'tab';
+        document.getElementById('section-manage').style.display = tab === 'manage' ? 'block' : 'none';
+        document.getElementById('section-add').style.display = tab === 'add' ? 'block' : 'none';
+        
+        if (tab === 'add' && document.getElementById('editIndex').value === '-1') {
+            document.getElementById('appNameInput').value = '';
+            document.getElementById('appImgInput').value = '';
+            document.getElementById('appLinkInput').value = '';
+            document.getElementById('appRestrictedInput').checked = false;
+        } else if (tab === 'manage') {
+            document.getElementById('editIndex').value = '-1';
+        }
+    }
+
+    window.onload = loadData;
+</script>
+
+</body>
+</html>
