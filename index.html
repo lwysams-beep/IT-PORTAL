@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>香海正覺蓮社佛教正覺蓮社學校 - 數據分析行政平台 V1.24</title>
+    <title>香海正覺蓮社佛教正覺蓮社學校 - 數據分析行政平台 V1.25</title>
     
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
@@ -76,10 +76,13 @@
         
         .manage-list { list-style: none; padding: 0; }
         .manage-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; border: 2px solid #ecf0f1; background: #fdfefe; border-radius: 15px; margin-bottom: 10px; }
-        .manage-item-info { font-size: 15px; font-weight: bold; color: #2c3e50; }
-        /* ⭐️ 點擊率標籤樣式 */
-        .click-badge { color: #e74c3c; font-size: 13px; margin-left: 10px; background: #fdebd0; padding: 3px 8px; border-radius: 10px; }
-        .manage-actions { display: flex; gap: 8px; }
+        
+        /* ⭐️ 更改為上下排列的名稱區塊 */
+        .manage-item-info { display: flex; flex-direction: column; gap: 5px; font-size: 15px; font-weight: bold; color: #2c3e50; }
+        /* ⭐️ 點擊率標籤樣式，換行並置左 */
+        .click-badge { color: #e74c3c; font-size: 12px; background: #fdebd0; padding: 3px 8px; border-radius: 10px; width: fit-content; }
+        
+        .manage-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 
         @media (max-width: 768px) {
             .banner-header { padding: 10px 15px; flex-direction: row; align-items: center; border-bottom: 3px solid #e74c3c; }
@@ -189,9 +192,9 @@
     googleProvider.setCustomParameters({ hd: "bcklas.edu.hk" });
 
     let appsData = [];
-    let clicksData = {}; // ⭐️ 儲存點擊率數據
+    let clicksData = {}; 
     let dbUnsubscribe = null;
-    let clicksUnsubscribe = null; // ⭐️ 監聽點擊率數據
+    let clicksUnsubscribe = null; 
 
     document.getElementById('appRestrictedInput').addEventListener('change', function() {
         document.getElementById('password-group').style.display = this.checked ? 'block' : 'none';
@@ -237,7 +240,6 @@
     ];
 
     function loadData() {
-        // 1. 載入方塊設定檔
         dbUnsubscribe = db.collection("school_portal").doc("apps_data").onSnapshot((doc) => {
             if (doc.exists && doc.data().list && doc.data().list.length > 0) {
                 appsData = doc.data().list;
@@ -251,12 +253,10 @@
             if (auth.currentUser && ADMIN_EMAILS.includes(auth.currentUser.email)) renderManageList();
         });
 
-        // ⭐️ 2. 載入點擊率數據檔
         clicksUnsubscribe = db.collection("school_portal").doc("clicks_data").onSnapshot((doc) => {
             if (doc.exists) {
                 clicksData = doc.data();
             }
-            // 若管理員開啟了後台，實時更新介面
             if (auth.currentUser && ADMIN_EMAILS.includes(auth.currentUser.email)) {
                 renderManageList();
             }
@@ -269,10 +269,8 @@
         });
     }
 
-    // ⭐️ 記錄點擊率的專屬函數 (寫入 clicks_data 文件)
     function recordClick(appName) {
         db.collection("school_portal").doc("clicks_data").set({
-            // 使用 Firebase 內建的 increment 功能，自動化處理並發衝突
             [appName]: firebase.firestore.FieldValue.increment(1)
         }, { merge: true }).catch(err => console.error("點擊記錄失敗", err));
     }
@@ -295,13 +293,13 @@
                 if (app.restricted) {
                     let pwd = prompt('🔥 此為機密區域，請輸入通關密碼：');
                     if (pwd === app.password) { 
-                        recordClick(app.name); // ⭐️ 驗證成功後記錄點擊
+                        recordClick(app.name); 
                         if (app.url !== '#') window.open(app.url, '_blank');
                     } else if (pwd !== null) {
                         alert('❌ 密碼錯誤！');
                     }
                 } else {
-                    recordClick(app.name); // ⭐️ 記錄點擊
+                    recordClick(app.name); 
                     if (app.url !== '#') window.open(app.url, '_blank');
                 }
             };
@@ -320,13 +318,13 @@
             const li = document.createElement('li');
             li.className = 'manage-item';
             
-            // ⭐️ 抓取該 APP 的點擊數
             let clickCount = clicksData[app.name] || 0;
 
+            // ⭐️ 更新 HTML：將點擊標籤獨立出來，並換行顯示
             li.innerHTML = `
                 <div class="manage-item-info">
-                    ${app.name} ${app.restricted ? '🔒' : ''}
-                    <span class="click-badge">📊 點擊: ${clickCount}</span>
+                    <div>${app.name} ${app.restricted ? '🔒' : ''}</div>
+                    <div class="click-badge">📊 點擊數: ${clickCount}</div>
                 </div>
                 <div class="manage-actions">
                     <button class="btn btn-gray btn-small" onclick="moveApp(${index}, -1)">⬆️</button>
