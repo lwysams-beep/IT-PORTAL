@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>香海正覺蓮社佛教正覺蓮社學校 - 智能圖床行政平台 V1.29.1</title>
+    <title>香海正覺蓮社佛教正覺蓮社學校 - 智能圖床行政平台 V1.30</title>
     
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
@@ -58,7 +58,7 @@
         .admin-btn:active { transform: translateY(0); box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
 
         .modal { display: none; position: fixed; z-index: 200; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); backdrop-filter: blur(3px); }
-        .modal-content { background: #ffffff; color: #333; border: none; box-shadow: 0 10px 30px rgba(0,0,0,0.2); margin: 5% auto; padding: 30px; border-radius: 25px; width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto; }
+        .modal-content { background: #ffffff; color: #333; border: none; box-shadow: 0 10px 30px rgba(0,0,0,0.2); margin: 5% auto; padding: 30px; border-radius: 25px; width: 90%; max-width: 600px; max-height: 80vh; overflow-y: auto; }
         .tabs { display: flex; border-bottom: 2px solid #ecf0f1; margin-bottom: 20px; }
         .tab { padding: 10px 20px; cursor: pointer; font-weight: bold; color: #95a5a6; }
         .tab.active { border-bottom: 3px solid #e74c3c; color: #e74c3c; margin-bottom: -2px; }
@@ -78,6 +78,7 @@
         .btn-gray { background-color: #95a5a6; color: white; }
         .btn-red { background-color: #e74c3c; color: white; }
         .btn-blue { background-color: #3498db; color: white; }
+        .btn-purple { background-color: #9b59b6; color: white; } /* 新增的紫色按鈕 */
         .btn-small { padding: 6px 10px; font-size: 13px; }
         
         .manage-list { list-style: none; padding: 0; margin: 0;}
@@ -99,6 +100,7 @@
             .grid-container { grid-template-columns: repeat(2, 1fr); padding: 15px; gap: 15px; }
             .app-card { border-radius: 12px; } 
             .admin-btn { padding: 10px 15px; font-size: 14px; bottom: 20px; right: 20px; }
+            .manage-header { flex-direction: column; align-items: flex-start; gap: 10px; }
         }
     </style>
 </head>
@@ -142,7 +144,11 @@
         <div id="section-manage">
             <div class="manage-header">
                 <h3>已建立的方塊清單</h3>
-                <button class="btn btn-red btn-small" onclick="resetClicks()">🔄 重置點擊率</button>
+                <div>
+                    <!-- ⭐️ 新增的一鍵批量轉換按鈕 -->
+                    <button class="btn btn-purple btn-small" id="bulkConvertBtn" onclick="bulkConvertImages()">🌟 一鍵修復所有 Google 圖片</button>
+                    <button class="btn btn-red btn-small" onclick="resetClicks()">🔄 重置點擊率</button>
+                </div>
             </div>
             <div id="manage-list-container"></div>
             <div style="text-align: right; margin-top: 20px;">
@@ -188,7 +194,7 @@
 
 <script>
     // =========================================
-    // ⭐️ 1. 請填入您的 ImgBB API Key
+    // ⭐️ 1. 請填入您的 API Keys
     // =========================================
     const IMGBB_API_KEY = 'aa6868806920fc525cbec2ebce679284';
 
@@ -250,8 +256,7 @@
 
     const defaultApps = [
         { name: '學校行事曆', img: 'https://cdn-icons-png.flaticon.com/512/2693/2693507.png', url: 'https://www.google.com/calendar', restricted: false, password: '', category: '行政' },
-        { name: '副校長編堂工具', img: 'https://cdn-icons-png.flaticon.com/512/3064/3064197.png', url: '#', restricted: true, password: '123', category: '行政' },
-        { name: '電子學習平台', img: 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png', url: '#', restricted: false, password: '', category: '學與教' }
+        { name: '副校長編堂工具', img: 'https://cdn-icons-png.flaticon.com/512/3064/3064197.png', url: '#', restricted: true, password: '123', category: '行政' }
     ];
 
     function loadData() {
@@ -369,7 +374,89 @@
     }
 
     // =========================================
-    // ⭐️ 核心改良：使用瀏覽器本地 Base64 轉換上傳 (100% 成功避開 Google 阻擋)
+    // ⭐️ 一鍵批量轉換系統 (自動掃描並轉存至 ImgBB)
+    // =========================================
+    window.bulkConvertImages = async function() {
+        if (!confirm('即將掃描所有方塊，並嘗試將 Google Drive 圖片自動轉移至 ImgBB (解決死圖)。\n\n這可能需要幾十秒的時間，確定執行？')) return;
+        
+        if (!IMGBB_API_KEY || IMGBB_API_KEY === '請在這裡貼上您的_IMGBB_API_KEY') {
+            return alert('⛔ 請先在程式碼中設定 IMGBB_API_KEY！');
+        }
+
+        const btn = document.getElementById('bulkConvertBtn');
+        btn.innerText = '⚙️ 批量轉移中...';
+        btn.disabled = true;
+
+        let updatedCount = 0;
+        let failedCount = 0;
+        let isModified = false; // 標記是否需要儲存
+
+        for (let i = 0; i < appsData.length; i++) {
+            let app = appsData[i];
+            
+            // 如果網址包含 drive.google.com，就進行轉檔
+            if (app.img && app.img.includes('drive.google.com')) {
+                console.log(`正在處理: ${app.name}...`);
+                try {
+                    // 嘗試從網址提取 ID (可能來自 thumbnail?id= 或 file/d/)
+                    let match = app.img.match(/id=([a-zA-Z0-9_-]+)/); 
+                    if (!match) match = app.img.match(/file\/d\/([a-zA-Z0-9_-]+)/);
+
+                    if (match && match[1]) {
+                        const googleThumbnail = `https://drive.google.com/thumbnail?id=${match[1]}&sz=w1000`;
+                        
+                        // 1. 本地 Base64 下載轉換
+                        const imageResponse = await fetch(googleThumbnail);
+                        const blob = await imageResponse.blob();
+                        const base64Data = await new Promise((resolve, reject) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => resolve(reader.result.split(',')[1]); // 只拿內容
+                            reader.onerror = reject;
+                            reader.readAsDataURL(blob);
+                        });
+
+                        // 2. 上傳至 ImgBB
+                        const formData = new FormData();
+                        formData.append('image', base64Data);
+
+                        const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const result = await response.json();
+
+                        if (result.success) {
+                            appsData[i].img = result.data.url; // 替換為 ImgBB 網址
+                            updatedCount++;
+                            isModified = true;
+                            console.log(`✅ ${app.name} 轉換成功!`);
+                        } else {
+                            failedCount++;
+                            console.warn(`⚠️ ${app.name} ImgBB 拒絕上傳:`, result);
+                        }
+                    }
+                } catch (error) {
+                    console.error(`⚠️ ${app.name} 轉換失敗 (通常是因 Google 安全機制阻擋批量下載):`, error);
+                    failedCount++;
+                }
+            }
+        }
+
+        if (isModified) {
+            saveData(); // 將更新後的資料寫回 Firebase
+            alert(`🎉 轉換完成！\n\n成功轉移: ${updatedCount} 個\n失敗: ${failedCount} 個`);
+        } else if (failedCount > 0) {
+            alert(`❌ 轉換失敗 ${failedCount} 個。\n這通常是因為瀏覽器安全機制 (CORS) 阻擋了連續下載。\n如果批量失敗，請在後台針對單一方塊點擊「修改」並重新儲存，或手動上傳至 ImgBB。`);
+        } else {
+            alert('✅ 掃描完成！沒有發現需要轉換的 Google Drive 圖片，大家都很安全。');
+        }
+
+        btn.innerText = '🌟 一鍵修復所有 Google 圖片';
+        btn.disabled = false;
+    }
+
+    // =========================================
+    // 單個方塊儲存時的轉檔
     // =========================================
     window.saveApp = async function() {
         const index = parseInt(document.getElementById('editIndex').value);
@@ -393,24 +480,20 @@
             const driveRegex = /drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/;
             const match = rawImg.match(driveRegex);
             
-            if (match && match) {
-                const googleThumbnail = `https://drive.google.com/thumbnail?id=${match}&sz=w1000`;
+            if (match && match[1]) {
+                const googleThumbnail = `https://drive.google.com/thumbnail?id=${match[1]}&sz=w1000`;
                 
                 if (IMGBB_API_KEY && IMGBB_API_KEY !== '請在這裡貼上您的_IMGBB_API_KEY') {
                     try {
-                        // 1. 利用老師目前的瀏覽器去 Google 下載這張圖（瀏覽器有 Cookie 權限，絕對可以下載）
                         const imageResponse = await fetch(googleThumbnail);
                         const blob = await imageResponse.blob();
-
-                        // 2. 將下載下來的圖片轉換為 Base64 字串
                         const base64Data = await new Promise((resolve, reject) => {
                             const reader = new FileReader();
-                            reader.onloadend = () => resolve(reader.result.split(',')); // 只拿 Base64 的主體部分
+                            reader.onloadend = () => resolve(reader.result.split(',')[1]); 
                             reader.onerror = reject;
                             reader.readAsDataURL(blob);
                         });
 
-                        // 3. 把 Base64 發送給 ImgBB API
                         const formData = new FormData();
                         formData.append('image', base64Data);
 
@@ -420,16 +503,10 @@
                         });
                         const result = await response.json();
                         
-                        if (result.success) {
-                            finalImg = result.data.url; // 成功！獲得永久不死圖連結，並將此寫入資料庫！
-                            console.log("✅ 成功透過本地 Base64 轉換並存入 ImgBB:", finalImg);
-                        } else {
-                            console.warn("⚠️ ImgBB 上傳失敗，退回 Google 縮圖", result.error);
-                            finalImg = googleThumbnail;
-                        }
+                        if (result.success) finalImg = result.data.url;
+                        else finalImg = googleThumbnail;
                     } catch (error) {
-                        console.error("⚠️ 本地轉檔上傳失敗 (這可能是由於 Google 的 CORS 跨網域限制):", error);
-                        // 防呆退路
+                        console.error("⚠️ 本地轉檔上傳失敗:", error);
                         finalImg = googleThumbnail;
                     }
                 } else {
