@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>香海正覺蓮社佛教正覺蓮社學校 - 智能圖床行政平台 V1.32</title>
+    <title>香海正覺蓮社佛教正覺蓮社學校 - 智能圖床行政平台 V1.33</title>
     
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
@@ -111,7 +111,7 @@
         <img src="https://i.ibb.co/qMGJpFQ3/image.png" alt="校徽">
         <h2>香海正覺蓮社<br>佛教正覺蓮社學校</h2>
         <p style="color: #7f8c8d; font-size: 14px;">一站式教師行政平台</p>
-        <button class="google-btn" onclick="loginWithGoogle()">
+        <button id="google-login-btn" class="google-btn" onclick="loginWithGoogle()">
             <img src="https://cdn-icons-png.flaticon.com/512/2991/2991148.png" alt="Google"> 
             使用學校帳號登入
         </button>
@@ -215,12 +215,6 @@
     const googleProvider = new firebase.auth.GoogleAuthProvider();
     googleProvider.setCustomParameters({ hd: "bcklas.edu.hk" });
 
-    // ⭐️ 加入重定向錯誤處理 (捕獲因跳轉導致的異常)
-    auth.getRedirectResult().catch((error) => {
-        console.error("重定向登入錯誤:", error);
-        alert("登入過程發生錯誤，請嘗試重新整理網頁。\n錯誤代碼: " + error.message);
-    });
-
     let appsData = [];
     let clicksData = {}; 
     let dbUnsubscribe = null;
@@ -232,47 +226,88 @@
         document.getElementById('password-group').style.display = this.checked ? 'block' : 'none';
     });
 
+    // ⭐️ 核心改良 1：主動且即時地捕獲「重定向登入結果」
+    auth.getRedirectResult().then((result) => {
+        if (result && result.user) {
+            console.log("✅ 成功捕獲重定向登入帳號:", result.user.email);
+            handleUserStatus(result.user);
+        }
+    }).catch((error) => {
+        console.error("重定向登入異常:", error);
+    });
+
+    // ⭐️ 核心改良 2：優化 Auth 狀態監聽邏輯
     auth.onAuthStateChanged((user) => {
+        handleUserStatus(user);
+    });
+
+    // ⭐️ 核心改良 3：整合式使用者狀態處理器 (防呆與秒速畫面解鎖)
+    function handleUserStatus(user) {
         if (user) {
+            // 安全驗證：限制特定網域信箱
             if (!user.email.endsWith(ALLOWED_DOMAIN)) {
                 alert('⛔ 存取被拒絕！\n\n此平台僅限「香海正覺蓮社佛教正覺蓮社學校」教職員使用。');
                 auth.signOut(); 
                 return;
             }
+
+            // 100% 登入成功：秒速關閉登入框，解鎖主畫面
             document.getElementById('login-screen').style.display = 'none';
             document.getElementById('main-content').style.display = 'flex';
+            
             let shortName = user.displayName ? user.displayName.split(' ')[0] : '老師';
             document.getElementById('user-name-display').innerText = `🌟 ${shortName}`;
             
-            if (ADMIN_EMAILS.includes(user.email)) document.getElementById('admin-btn').style.display = 'block';
-            else document.getElementById('admin-btn').style.display = 'none';
-            loadData();
+            if (ADMIN_EMAILS.includes(user.email)) {
+                document.getElementById('admin-btn').style.display = 'block';
+            } else {
+                document.getElementById('admin-btn').style.display = 'none';
+            }
+
+            // 避免重複監聽
+            if (!dbUnsubscribe) {
+                loadData();
+            }
         } else {
+            // 100% 登出成功：秒速切換回登入畫面
             document.getElementById('login-screen').style.display = 'flex';
             document.getElementById('main-content').style.display = 'none';
             document.getElementById('admin-btn').style.display = 'none'; 
-            if (dbUnsubscribe) dbUnsubscribe(); 
-            if (clicksUnsubscribe) clicksUnsubscribe();
+            document.getElementById('google-login-btn').innerText = '使用學校帳號登入';
+            document.getElementById('google-login-btn').disabled = false;
+            
+            if (dbUnsubscribe) { dbUnsubscribe(); dbUnsubscribe = null; }
+            if (clicksUnsubscribe) { clicksUnsubscribe(); clicksUnsubscribe = null; }
         }
-    });
+    }
 
-    // ⭐️ 核心改良：智慧辨識登入模式
+    // 智慧辨識裝置登入模式
     window.loginWithGoogle = function() { 
-        // 判斷是否為手機端 (包含 WhatsApp 內建瀏覽器等)
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        const loginBtn = document.getElementById('google-login-btn');
         
+        loginBtn.innerText = '⚙️ 正在登入...';
+        loginBtn.disabled = true;
+
         if (isMobile) {
-            // 行動端：使用重定向，強制載入新的頁面登入，避開 Popup 被封鎖
+            // 行動端：重定向跳轉
             auth.signInWithRedirect(googleProvider);
         } else {
-            // 電腦端：使用流暢的彈出視窗
+            // 電腦端：Popup 彈窗
             auth.signInWithPopup(googleProvider).catch((error) => { 
                 alert("登入失敗：" + error.message); 
+                loginBtn.innerText = '使用學校帳號登入';
+                loginBtn.disabled = false;
             });
         }
     }
 
-    window.logout = function() { auth.signOut(); }
+    window.logout = function() { 
+        auth.signOut().then(() => {
+            // 登出後強制清空瀏覽器狀態並刷新頁面，保證重定向乾淨
+            window.location.reload(); 
+        });
+    }
 
     const defaultApps = [
         { name: '學校行事曆', img: 'https://cdn-icons-png.flaticon.com/512/2693/2693507.png', url: 'https://www.google.com/calendar', restricted: false, password: '', category: '行政' }
@@ -378,7 +413,6 @@
             saveData();
         }
     }
-    
     window.deleteApp = function(index) { if(confirm('確定要把「' + appsData[index].name + '」刪除嗎？')) { appsData.splice(index, 1); saveData(); } }
     
     window.editApp = function(index) {
@@ -389,8 +423,10 @@
         document.getElementById('appImgInput').value = app.img;
         document.getElementById('appLinkInput').value = app.url;
         document.getElementById('appRestrictedInput').checked = app.restricted;
+        
         document.getElementById('appPasswordInput').value = app.password || '';
         document.getElementById('password-group').style.display = app.restricted ? 'block' : 'none';
+        
         switchTab('add');
     }
 
@@ -422,7 +458,7 @@
         }
 
         if (isModified) { saveData(); alert(`🎉 轉換完成！\n\n成功轉移: ${updatedCount} 個\n失敗: ${failedCount} 個`); } 
-        else if (failedCount > 0) alert(`❌ 轉換失敗 ${failedCount} 個。請確認您的 API 額度或手動上傳。`);
+        else if (failedCount > 0) alert("❌ 轉換失敗！請確認 API key 是否設定正確。");
         else alert('✅ 掃描完成！沒有發現需要轉換的 Google Drive 圖片。');
 
         btn.innerText = '🌟 一鍵修復 Google 圖片'; btn.disabled = false;
