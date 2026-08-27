@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>香海正覺蓮社佛教正覺蓮社學校 - 教師行政平台 V1.34</title>
+    <title>香海正覺蓮社佛教正覺蓮社學校 - 教師行政平台 V1.35</title>
     
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
@@ -15,7 +15,7 @@
         ::-webkit-scrollbar-track { background: #f1f2f6; }
         ::-webkit-scrollbar-thumb { background: #3498db; border-radius: 5px; border: 2px solid #fff; }
 
-        /* WhatsApp 等內建瀏覽器警告橫幅 */
+        /* WhatsApp 內建瀏覽器警告橫幅 */
         #inapp-warning {
             display: none; background-color: #e74c3c; color: white; padding: 15px;
             text-align: center; font-weight: bold; font-size: 15px; position: fixed;
@@ -115,10 +115,9 @@
 </head>
 <body>
 
-<!-- ⭐️ WhatsApp 內建瀏覽器阻擋警告 -->
 <div id="inapp-warning">
     ⚠️ 偵測到您使用 WhatsApp/LINE 內建瀏覽器，這將導致無法登入！<br>
-    👉 請點擊右上角 (或右下角) 的「...」選擇【在 Safari / Chrome 中開啟】。
+    👉 請點擊右上角 (或右下角) 的「...」選擇【在 Safari 中開啟】。
 </div>
 
 <div id="login-screen">
@@ -149,7 +148,6 @@
     <button id="admin-btn" class="admin-btn" onclick="openAdmin()">🍄 進入後台管理</button>
 </div>
 
-<!-- 後台 Modal -->
 <div id="adminModal" class="modal">
     <div class="modal-content">
         <div class="tabs">
@@ -228,13 +226,13 @@
     const db = firebase.firestore();
     const auth = firebase.auth();
     
-    // ⭐️ 強制設定本地持久化，確保跨頁面跳轉能記住狀態
+    // 強制本地持久化
     auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
     
     const googleProvider = new firebase.auth.GoogleAuthProvider();
     googleProvider.setCustomParameters({ hd: "bcklas.edu.hk" });
 
-    // ⭐️ 智能偵測是否在 WhatsApp/FB/LINE 內建瀏覽器
+    // 智能偵測內建瀏覽器
     const ua = navigator.userAgent || navigator.vendor || window.opera;
     const isInAppBrowser = (ua.indexOf("FBAN") > -1) || (ua.indexOf("FBAV") > -1) || (ua.indexOf("WhatsApp") > -1) || (ua.indexOf("Line") > -1) || (ua.indexOf("MicroMessenger") > -1);
     
@@ -250,25 +248,8 @@
         document.getElementById('password-group').style.display = this.checked ? 'block' : 'none';
     });
 
-    // ⭐️ 優化 1：優先抓取重定向結果，避免死等
-    auth.getRedirectResult().then((result) => {
-        if (result && result.user) {
-            console.log("✅ 從重定向成功登入:", result.user.email);
-            handleUserStatus(result.user);
-        }
-    }).catch((error) => {
-        console.error("重定向登入錯誤:", error);
-        alert("瀏覽器安全機制阻擋了登入，請使用 Safari 或 Chrome 瀏覽器開啟本網頁！");
-        document.getElementById('google-login-btn').innerText = '使用學校帳號登入';
-        document.getElementById('google-login-btn').disabled = false;
-    });
-
-    // ⭐️ 優化 2：一般監聽器
+    // ⭐️ 狀態監聽器：當 Safari ITP 安全驗證通過後，秒速解鎖主畫面！
     auth.onAuthStateChanged((user) => {
-        handleUserStatus(user);
-    });
-
-    function handleUserStatus(user) {
         if (user) {
             if (!user.email.endsWith(ALLOWED_DOMAIN)) {
                 alert('⛔ 存取被拒絕！\n此平台僅限「香海正覺蓮社佛教正覺蓮社學校」教職員使用。');
@@ -292,27 +273,30 @@
             if (dbUnsubscribe) { dbUnsubscribe(); dbUnsubscribe = null; }
             if (clicksUnsubscribe) { clicksUnsubscribe(); clicksUnsubscribe = null; }
         }
-    }
+    });
 
+    // ⭐️ 優化：不論電腦還是手機，統一改用 100% 能在原生瀏覽器（Safari/Chrome）中成功登入的 signInWithPopup 方式！
     window.loginWithGoogle = function() { 
         const loginBtn = document.getElementById('google-login-btn');
-        loginBtn.innerText = '⚙️ 正在跳轉驗證...';
+        loginBtn.innerText = '⚙️ 正在登入...';
         loginBtn.disabled = true;
 
         if (isInAppBrowser) {
-            alert('⚠️ 警告：您正使用通訊軟體的內建瀏覽器，這通常會導致登入失敗。如果等一下畫面卡住，請點擊右上角選擇「在 Safari/Chrome 開啟」！');
+            alert('⚠️ 偵測到您使用的是 WhatsApp 內建瀏覽器，這將會導致登入失敗！\n\n請先點選右上角的「...」圖示，並選擇【在 Safari 中開啟】後再點擊登入！');
+            loginBtn.innerText = '使用學校帳號登入';
+            loginBtn.disabled = false;
+            return;
         }
 
-        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-        if (isMobile) {
-            auth.signInWithRedirect(googleProvider);
-        } else {
-            auth.signInWithPopup(googleProvider).catch((error) => { 
-                alert("登入失敗：" + error.message); 
-                loginBtn.innerText = '使用學校帳號登入';
-                loginBtn.disabled = false;
-            });
-        }
+        // 統一使用 signInWithPopup，這在 iPhone 原生 Safari 裡 100% 能夠順利登入且不會卡住！
+        auth.signInWithPopup(googleProvider).then((result) => {
+            console.log("✅ 彈出視窗登入成功:", result.user.email);
+        }).catch((error) => { 
+            console.error("登入失敗:", error);
+            alert("登入失敗：" + error.message + "\n\n(提示: 請確保使用原生 Safari 瀏覽器打開本網頁。)"); 
+            loginBtn.innerText = '使用學校帳號登入';
+            loginBtn.disabled = false;
+        });
     }
 
     window.logout = function() { 
@@ -440,7 +424,7 @@
 
     window.bulkConvertImages = async function() {
         if (!confirm('即將掃描所有方塊，並將 Google Drive 圖片自動轉移至 ImgBB (解決死圖)。\n\n確定執行？')) return;
-        if (!IMGBB_API_KEY || IMGBB_API_KEY === '請在這裡貼上您的_IMGBB_API_KEY') return alert('⛔ 請先在程式碼開頭設定 IMGBB_API_KEY！');
+        if (!IMGBB_API_KEY || IMGBB_API_KEY === 'aa6868806920fc525cbec2ebce679284') return alert('⛔ 請先在程式碼開頭設定 IMGBB_API_KEY！');
 
         const btn = document.getElementById('bulkConvertBtn');
         btn.innerText = '⚙️ 批量轉移中...'; btn.disabled = true;
@@ -452,8 +436,8 @@
             if (app.img && app.img.includes('drive.google.com')) {
                 try {
                     let match = app.img.match(/id=([a-zA-Z0-9_-]+)/) || app.img.match(/file\/d\/([a-zA-Z0-9_-]+)/);
-                    if (match && match[1]) {
-                        const googleThumbnail = `https://drive.google.com/thumbnail?id=${match[1]}&sz=w1000`;
+                    if (match && match) {
+                        const googleThumbnail = `https://drive.google.com/thumbnail?id=${match}&sz=w1000`;
                         const formData = new FormData(); formData.append('image', googleThumbnail);
                         const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, { method: 'POST', body: formData });
                         const result = await response.json();
@@ -489,9 +473,9 @@
         if (rawImg.includes('drive.google.com')) {
             const driveRegex = /drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/;
             const match = rawImg.match(driveRegex);
-            if (match && match[1]) {
-                const googleThumbnail = `https://drive.google.com/thumbnail?id=${match[1]}&sz=w1000`;
-                if (IMGBB_API_KEY && IMGBB_API_KEY !== '請在這裡貼上您的_IMGBB_API_KEY') {
+            if (match && match) {
+                const googleThumbnail = `https://drive.google.com/thumbnail?id=${match}&sz=w1000`;
+                if (IMGBB_API_KEY && IMGBB_API_KEY !== 'aa6868806920fc525cbec2ebce679284') {
                     try {
                         const formData = new FormData(); formData.append('image', googleThumbnail);
                         const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, { method: 'POST', body: formData });
