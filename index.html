@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>香海正覺蓮社佛教正覺蓮社學校 - 智能圖床行政平台 V1.31</title>
+    <title>香海正覺蓮社佛教正覺蓮社學校 - 智能圖床行政平台 V1.32</title>
     
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
@@ -190,11 +190,11 @@
         </div>
     </div>
 </div>
+
 <script>
     // =========================================
     // ⭐️ 1. 請填入您的 API Keys
     // =========================================
-    // 這裡請填入您從 https://api.imgbb.com/ 申請的免費 API Key
     const IMGBB_API_KEY = 'aa6868806920fc525cbec2ebce679284';
 
     const ALLOWED_DOMAIN = '@bcklas.edu.hk';
@@ -214,6 +214,12 @@
     const auth = firebase.auth();
     const googleProvider = new firebase.auth.GoogleAuthProvider();
     googleProvider.setCustomParameters({ hd: "bcklas.edu.hk" });
+
+    // ⭐️ 加入重定向錯誤處理 (捕獲因跳轉導致的異常)
+    auth.getRedirectResult().catch((error) => {
+        console.error("重定向登入錯誤:", error);
+        alert("登入過程發生錯誤，請嘗試重新整理網頁。\n錯誤代碼: " + error.message);
+    });
 
     let appsData = [];
     let clicksData = {}; 
@@ -250,7 +256,22 @@
         }
     });
 
-    window.loginWithGoogle = function() { auth.signInWithPopup(googleProvider).catch((error) => { alert("登入失敗：" + error.message); }); }
+    // ⭐️ 核心改良：智慧辨識登入模式
+    window.loginWithGoogle = function() { 
+        // 判斷是否為手機端 (包含 WhatsApp 內建瀏覽器等)
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        
+        if (isMobile) {
+            // 行動端：使用重定向，強制載入新的頁面登入，避開 Popup 被封鎖
+            auth.signInWithRedirect(googleProvider);
+        } else {
+            // 電腦端：使用流暢的彈出視窗
+            auth.signInWithPopup(googleProvider).catch((error) => { 
+                alert("登入失敗：" + error.message); 
+            });
+        }
+    }
+
     window.logout = function() { auth.signOut(); }
 
     const defaultApps = [
@@ -373,77 +394,40 @@
         switchTab('add');
     }
 
-    // =========================================
-    // ⭐️ 一鍵批量轉換系統 (直接發送 URL 給 ImgBB，繞過瀏覽器 CORS)
-    // =========================================
     window.bulkConvertImages = async function() {
         if (!confirm('即將掃描所有方塊，並將 Google Drive 圖片自動轉移至 ImgBB (解決死圖)。\n\n確定執行？')) return;
-        
-        if (!IMGBB_API_KEY || IMGBB_API_KEY === '請在這裡貼上您的_IMGBB_API_KEY') {
-            return alert('⛔ 請先在程式碼開頭設定 IMGBB_API_KEY！');
-        }
+        if (!IMGBB_API_KEY || IMGBB_API_KEY === '請在這裡貼上您的_IMGBB_API_KEY') return alert('⛔ 請先在程式碼開頭設定 IMGBB_API_KEY！');
 
         const btn = document.getElementById('bulkConvertBtn');
-        btn.innerText = '⚙️ 批量轉移中...';
-        btn.disabled = true;
+        btn.innerText = '⚙️ 批量轉移中...'; btn.disabled = true;
 
-        let updatedCount = 0;
-        let failedCount = 0;
-        let isModified = false;
+        let updatedCount = 0; let failedCount = 0; let isModified = false;
 
         for (let i = 0; i < appsData.length; i++) {
             let app = appsData[i];
-            
             if (app.img && app.img.includes('drive.google.com')) {
-                console.log(`正在處理: ${app.name}...`);
                 try {
                     let match = app.img.match(/id=([a-zA-Z0-9_-]+)/) || app.img.match(/file\/d\/([a-zA-Z0-9_-]+)/);
                     if (match && match[1]) {
                         const googleThumbnail = `https://drive.google.com/thumbnail?id=${match[1]}&sz=w1000`;
-                        
-                        // 直接將網址交給 ImgBB API，不在瀏覽器內下載，徹底繞過 CORS
-                        const formData = new FormData();
-                        formData.append('image', googleThumbnail);
-
-                        const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
-                            method: 'POST',
-                            body: formData
-                        });
+                        const formData = new FormData(); formData.append('image', googleThumbnail);
+                        const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, { method: 'POST', body: formData });
                         const result = await response.json();
 
-                        if (result.success) {
-                            appsData[i].img = result.data.url; 
-                            updatedCount++;
-                            isModified = true;
-                            console.log(`✅ ${app.name} 轉換成功: ${result.data.url}`);
-                        } else {
-                            failedCount++;
-                            console.warn(`⚠️ ${app.name} 轉換失敗:`, result);
-                        }
+                        if (result.success) { appsData[i].img = result.data.url; updatedCount++; isModified = true; } 
+                        else { failedCount++; }
                     }
-                } catch (error) {
-                    console.error(`⚠️ ${app.name} 發生網路錯誤:`, error);
-                    failedCount++;
-                }
+                } catch (error) { failedCount++; }
             }
         }
 
-        if (isModified) {
-            saveData(); 
-            alert(`🎉 轉換完成！\n\n成功轉移: ${updatedCount} 個\n失敗: ${failedCount} 個`);
-        } else if (failedCount > 0) {
-            alert(`❌ 轉換失敗 ${failedCount} 個。請確認您的 API 額度或手動上傳。`);
-        } else {
-            alert('✅ 掃描完成！沒有發現需要轉換的 Google Drive 圖片。');
-        }
+        if (isModified) { saveData(); alert(`🎉 轉換完成！\n\n成功轉移: ${updatedCount} 個\n失敗: ${failedCount} 個`); } 
+        else if (failedCount > 0) alert(`❌ 轉換失敗 ${failedCount} 個。請確認您的 API 額度或手動上傳。`);
+        else alert('✅ 掃描完成！沒有發現需要轉換的 Google Drive 圖片。');
 
-        btn.innerText = '🌟 一鍵修復 Google 圖片';
-        btn.disabled = false;
+        btn.innerText = '🌟 一鍵修復 Google 圖片'; btn.disabled = false;
     }
 
-    // =========================================
-    // ⭐️ 單個方塊儲存時的轉檔 (直接發送 URL 給 ImgBB)
-    // =========================================
     window.saveApp = async function() {
         const index = parseInt(document.getElementById('editIndex').value);
         const name = document.getElementById('appNameInput').value;
@@ -457,52 +441,29 @@
         if (name.trim() === '') return alert('請輸入方塊名稱！');
         if (restricted && password.trim() === '') return alert('請為鎖定的方塊設定密碼！');
 
-        saveBtn.innerText = '⚙️ 處理圖片中...';
-        saveBtn.disabled = true;
-
+        saveBtn.innerText = '⚙️ 處理圖片中...'; saveBtn.disabled = true;
         let finalImg = rawImg;
 
         if (rawImg.includes('drive.google.com')) {
             const driveRegex = /drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/;
             const match = rawImg.match(driveRegex);
-            
             if (match && match[1]) {
                 const googleThumbnail = `https://drive.google.com/thumbnail?id=${match[1]}&sz=w1000`;
-                
                 if (IMGBB_API_KEY && IMGBB_API_KEY !== '請在這裡貼上您的_IMGBB_API_KEY') {
                     try {
-                        const formData = new FormData();
-                        // 直接傳遞網址，繞過 CORS
-                        formData.append('image', googleThumbnail);
-
-                        const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
-                            method: 'POST',
-                            body: formData
-                        });
+                        const formData = new FormData(); formData.append('image', googleThumbnail);
+                        const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, { method: 'POST', body: formData });
                         const result = await response.json();
-                        
-                        if (result.success) {
-                            finalImg = result.data.url;
-                        } else {
-                            finalImg = googleThumbnail;
-                        }
-                    } catch (error) {
-                        console.error("⚠️ 上傳失敗:", error);
-                        finalImg = googleThumbnail;
-                    }
-                } else {
-                    finalImg = googleThumbnail;
-                }
+                        if (result.success) finalImg = result.data.url; else finalImg = googleThumbnail;
+                    } catch (error) { finalImg = googleThumbnail; }
+                } else { finalImg = googleThumbnail; }
             }
         }
 
         const newData = { name, category, img: finalImg, url: link, restricted, password }; 
         if (index === -1) appsData.push(newData); else appsData[index] = newData;
         saveData();
-        
-        saveBtn.innerText = '確認建造';
-        saveBtn.disabled = false;
-        switchTab('manage');
+        saveBtn.innerText = '確認建造'; saveBtn.disabled = false; switchTab('manage');
     }
 
     window.openAdmin = function() { 
