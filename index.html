@@ -78,7 +78,6 @@
         .form-group { margin-bottom: 15px; }
         .form-group label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 14px; color: #3498db; }
         
-        /* ⭐️ 這裡加入 input[type="password"] 的選擇器支援 */
         .form-group input[type="text"], .form-group input[type="password"], .form-group select { width: 100%; padding: 10px; box-sizing: border-box; border: 2px solid #bdc3c7; border-radius: 12px; background: #f8f9fa; color: #333; font-weight: bold; transition: 0.2s;}
         .form-group input[type="text"]:focus, .form-group input[type="password"]:focus, .form-group select:focus { outline: none; border-color: #3498db; background: #fff; }
         
@@ -150,6 +149,22 @@
     <button id="admin-btn" class="admin-btn" onclick="openAdmin()">🍄 進入後台管理</button>
 </div>
 
+<!-- ⭐️ 新增：機密區域解鎖密碼對話框 (Modal) -->
+<div id="pwdModal" class="modal">
+    <div class="modal-content" style="max-width: 380px; text-align: center;">
+        <h3 style="color: #e74c3c; margin-top:0;">🔥 此為機密區域</h3>
+        <p style="font-weight: bold; color: #546e7a;">請輸入通關密碼：</p>
+        <div class="form-group">
+            <!-- 密碼輸入框，輸入時會顯示為星號/圓點，支援按 Enter 直接解鎖 -->
+            <input type="password" id="unlockPwdInput" placeholder="請輸入解鎖密碼" onkeydown="if(event.key==='Enter') submitUnlockPassword()">
+        </div>
+        <div style="display: flex; justify-content: center; gap: 10px; margin-top: 20px;">
+            <button class="btn btn-gray" onclick="closePwdModal()">取消</button>
+            <button class="btn btn-red" onclick="submitUnlockPassword()">確認解鎖</button>
+        </div>
+    </div>
+</div>
+
 <div id="adminModal" class="modal">
     <div class="modal-content">
         <div class="tabs">
@@ -197,7 +212,6 @@
             </div>
             <div class="form-group" id="password-group" style="display: none;">
                 <label style="color: #e74c3c;">設定專屬解鎖密碼：</label>
-                <!-- ⭐️ 將 type 改為 password 以遮蔽輸入字元 -->
                 <input type="password" id="appPasswordInput" placeholder="請輸入自訂密碼">
             </div>
             <div style="text-align: right; margin-top: 20px;">
@@ -245,6 +259,7 @@
 
     let appsData = []; let clicksData = {}; 
     let dbUnsubscribe = null; let clicksUnsubscribe = null; 
+    let currentRestrictedApp = null; // ⭐️ 紀錄目前正在等待解鎖的方塊
     const CATEGORIES = ['行政', '學與教'];
 
     document.getElementById('appRestrictedInput').addEventListener('change', function() {
@@ -351,9 +366,8 @@
                     card.title = app.name; 
                     card.onclick = () => {
                         if (app.restricted) {
-                            let pwd = prompt('🔥 此為機密區域，請輸入通關密碼：');
-                            if (pwd === app.password) { recordClick(app.name); if (app.url !== '#') window.open(app.url, '_blank'); } 
-                            else if (pwd !== null) alert('❌ 密碼錯誤！');
+                            // ⭐️ 改為打開自訂密碼彈出視窗
+                            openPwdModal(app);
                         } else {
                             recordClick(app.name); if (app.url !== '#') window.open(app.url, '_blank');
                         }
@@ -364,6 +378,38 @@
                 container.appendChild(grid);
             }
         });
+    }
+
+    // =========================================
+    // ⭐️ 新增：自訂解鎖密碼對話框邏輯
+    // =========================================
+    function openPwdModal(app) {
+        currentRestrictedApp = app;
+        const input = document.getElementById('unlockPwdInput');
+        input.value = ''; // 清空密碼框
+        document.getElementById('pwdModal').style.display = 'block';
+        setTimeout(() => input.focus(), 100); // 自動聚焦到輸入框
+    }
+
+    function closePwdModal() {
+        document.getElementById('pwdModal').style.display = 'none';
+        currentRestrictedApp = null;
+    }
+
+    function submitUnlockPassword() {
+        if (!currentRestrictedApp) return;
+        const input = document.getElementById('unlockPwdInput');
+        if (input.value === currentRestrictedApp.password) {
+            recordClick(currentRestrictedApp.name);
+            if (currentRestrictedApp.url !== '#') {
+                window.open(currentRestrictedApp.url, '_blank');
+            }
+            closePwdModal();
+        } else {
+            alert('❌ 密碼錯誤！');
+            input.value = '';
+            input.focus();
+        }
     }
 
     function renderManageList() {
