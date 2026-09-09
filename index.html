@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>香海正覺蓮社佛教正覺蓮社學校 - 教師行政平台 V1.35</title>
+    <title>香海正覺蓮社佛教正覺蓮社學校 - 教師行政平台 V1.36</title>
     
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
@@ -149,13 +149,12 @@
     <button id="admin-btn" class="admin-btn" onclick="openAdmin()">🍄 進入後台管理</button>
 </div>
 
-<!-- ⭐️ 新增：機密區域解鎖密碼對話框 (Modal) -->
+<!-- 機密區域解鎖密碼對話框 -->
 <div id="pwdModal" class="modal">
     <div class="modal-content" style="max-width: 380px; text-align: center;">
         <h3 style="color: #e74c3c; margin-top:0;">🔥 此為機密區域</h3>
         <p style="font-weight: bold; color: #546e7a;">請輸入通關密碼：</p>
         <div class="form-group">
-            <!-- 密碼輸入框，輸入時會顯示為星號/圓點，支援按 Enter 直接解鎖 -->
             <input type="password" id="unlockPwdInput" placeholder="請輸入解鎖密碼" onkeydown="if(event.key==='Enter') submitUnlockPassword()">
         </div>
         <div style="display: flex; justify-content: center; gap: 10px; margin-top: 20px;">
@@ -223,9 +222,6 @@
 </div>
 
 <script>
-    // =========================================
-    // ⭐️ 1. 請填入您的 API Keys
-    // =========================================
     const IMGBB_API_KEY = '08ecf80eea95f69a16ea4d32f612804f';
     const ALLOWED_DOMAIN = '@bcklas.edu.hk';
     const ADMIN_EMAILS = ['lwysams@bcklas.edu.hk', 'slssams@bcklas.edu.hk'];
@@ -247,9 +243,12 @@
     auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
     
     const googleProvider = new firebase.auth.GoogleAuthProvider();
-    googleProvider.setCustomParameters({ hd: "bcklas.edu.hk" });
+    // ⭐️ 加入 prompt: 'select_account' 確保每次皆建立全新 OAuth State，防止 session 遺失
+    googleProvider.setCustomParameters({ 
+        hd: "bcklas.edu.hk",
+        prompt: "select_account"
+    });
 
-    // 智能偵測內建瀏覽器
     const ua = navigator.userAgent || navigator.vendor || window.opera;
     const isInAppBrowser = (ua.indexOf("FBAN") > -1) || (ua.indexOf("FBAV") > -1) || (ua.indexOf("WhatsApp") > -1) || (ua.indexOf("Line") > -1) || (ua.indexOf("MicroMessenger") > -1);
     
@@ -259,14 +258,13 @@
 
     let appsData = []; let clicksData = {}; 
     let dbUnsubscribe = null; let clicksUnsubscribe = null; 
-    let currentRestrictedApp = null; // ⭐️ 紀錄目前正在等待解鎖的方塊
+    let currentRestrictedApp = null;
     const CATEGORIES = ['行政', '學與教'];
 
     document.getElementById('appRestrictedInput').addEventListener('change', function() {
         document.getElementById('password-group').style.display = this.checked ? 'block' : 'none';
     });
 
-    // ⭐️ 狀態監聽器：當 Safari ITP 安全驗證通過後，秒速解鎖主畫面！
     auth.onAuthStateChanged((user) => {
         if (user) {
             if (!user.email.endsWith(ALLOWED_DOMAIN)) {
@@ -293,7 +291,7 @@
         }
     });
 
-    // ⭐️ 優化：不論電腦還是手機，統一改用 100% 能在原生瀏覽器（Safari/Chrome）中成功登入的 signInWithPopup 方式！
+    // ⭐️ 修復 missing initial state 的登入邏輯
     window.loginWithGoogle = function() { 
         const loginBtn = document.getElementById('google-login-btn');
         loginBtn.innerText = '⚙️ 正在登入...';
@@ -306,19 +304,38 @@
             return;
         }
 
-        // 統一使用 signInWithPopup，這在 iPhone 原生 Safari 裡 100% 能夠順利登入且不會卡住！
+        // 先清理可能殘留的 session 快取
+        try {
+            sessionStorage.clear();
+        } catch (e) {
+            console.warn("Unable to clear sessionStorage", e);
+        }
+
         auth.signInWithPopup(googleProvider).then((result) => {
-            console.log("✅ 彈出視窗登入成功:", result.user.email);
+            console.log("✅ 登入成功:", result.user.email);
         }).catch((error) => { 
-            console.error("登入失敗:", error);
-            alert("登入失敗：" + error.message + "\n\n(提示: 請確保使用原生 Safari 瀏覽器打開本網頁。)"); 
+            console.error("登入失敗完整錯誤資訊:", error);
+            
+            // 復原按鈕狀態
             loginBtn.innerText = '使用學校帳號登入';
             loginBtn.disabled = false;
+
+            // 專門針對 missing initial state 提示使用者
+            if (error.message && error.message.includes('missing initial state')) {
+                alert("⚠️ 登入驗證中斷 (Missing Initial State)\n\n這通常是 Safari 或瀏覽器的隱私設定所致。請嘗試：\n1. 請勿使用「無痕模式 / 私人瀏覽」\n2. 若使用 iPhone Safari，請至 [設定] > [Safari] > 關閉「阻擋跨網站追蹤」再試一次。");
+            } else if (error.code === 'auth/popup-blocked') {
+                alert("⚠️ 瀏覽器阻擋了彈出視窗，請允許開啟彈出視窗後再試一次。");
+            } else if (error.code !== 'auth/popup-closed-by-user') {
+                alert("登入失敗：" + error.message);
+            }
         });
     }
 
     window.logout = function() { 
-        auth.signOut().then(() => { window.location.reload(); }); 
+        auth.signOut().then(() => { 
+            sessionStorage.clear();
+            window.location.reload(); 
+        }); 
     }
 
     const defaultApps = [
@@ -366,7 +383,6 @@
                     card.title = app.name; 
                     card.onclick = () => {
                         if (app.restricted) {
-                            // ⭐️ 改為打開自訂密碼彈出視窗
                             openPwdModal(app);
                         } else {
                             recordClick(app.name); if (app.url !== '#') window.open(app.url, '_blank');
@@ -380,15 +396,12 @@
         });
     }
 
-    // =========================================
-    // ⭐️ 新增：自訂解鎖密碼對話框邏輯
-    // =========================================
     function openPwdModal(app) {
         currentRestrictedApp = app;
         const input = document.getElementById('unlockPwdInput');
-        input.value = ''; // 清空密碼框
+        input.value = '';
         document.getElementById('pwdModal').style.display = 'block';
-        setTimeout(() => input.focus(), 100); // 自動聚焦到輸入框
+        setTimeout(() => input.focus(), 100);
     }
 
     function closePwdModal() {
